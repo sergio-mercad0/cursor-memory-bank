@@ -63,7 +63,7 @@ def project_root() -> Path:
 def tmp_input(tmp_path: Path) -> Path:
     """Create a temporary input directory for testing.
     
-    Customize the directory name for your project (e.g., Photos_Inbox, input, data).
+    Customize the directory name for your project (e.g., input, data, uploads).
     """
     input_dir = tmp_path / "input"
     input_dir.mkdir()

@@ -1,6 +1,6 @@
 # Cursor Memory Bank
 
-**A persistent context framework for Cursor AI that enables seamless agent handoffs without hallucinations.**
+**v2.0** | A persistent context framework for Cursor AI that enables seamless agent handoffs without hallucinations.
 
 ---
 
@@ -27,6 +27,8 @@ The **Memory Bank** is a structured `.cursor/` directory that gives your AI agen
 ```
 .cursor/
 ├── README.md                    # System documentation
+├── plans/                       # Active planning documents (v2.0)
+│   └── *.plan.md                # Cursor plan files
 ├── memory/                      # Long-term context
 │   ├── PROJECT_BRIEF.md         # What the project does
 │   ├── TECH_STACK.md            # Technologies used
@@ -41,9 +43,37 @@ The **Memory Bank** is a structured `.cursor/` directory that gives your AI agen
 
 Combined with `.cursorrules` protocols, the agent:
 - ✅ Reads context at session start
+- ✅ Checks for active plan files (v2.0)
+- ✅ Verifies branch state before coding (v2.0)
 - ✅ Proposes plans before coding
 - ✅ Records decisions and lessons
 - ✅ Hands off cleanly to future sessions
+
+---
+
+## What's New in v2.0
+
+### 4-Pillar Template Structure
+
+The `.cursorrules` template now uses a cleaner, modular structure:
+
+| Pillar | Purpose |
+|--------|---------|
+| **01_AGENT_PROTOCOL** | Memory bank, startup, planning, closeout |
+| **02_INFRASTRUCTURE** | Project-specific (stub for customization) |
+| **03_DEVELOPMENT** | Code standards, error handling (stub) |
+| **04_QUALITY_ASSURANCE** | Testing protocol |
+
+### New Features
+
+- **Plan File Continuity** - Resume from `.plan.md` files across sessions
+- **Branch Protection** - Verify branch state before making changes
+- **Mode Switching Heuristic** - Clear triggers for when to plan vs execute
+- **Incremental Build Gates** - Phased checkpoints for complex work
+- **Session Closeout Protocol** - Git commit workflow with handoff verification
+- **Tool Permissions Matrix** - Explicit read/write/approval requirements
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 
@@ -60,7 +90,7 @@ Combined with `.cursorrules` protocols, the agent:
 
 1. Copy the `.cursor/` structure from `templates/` to your project:
    ```bash
-   mkdir -p .cursor/memory .cursor/active_sprint
+   mkdir -p .cursor/memory .cursor/active_sprint .cursor/plans
    cp templates/memory/*.template.md .cursor/memory/
    cp templates/active_sprint/*.template.md .cursor/active_sprint/
    cp templates/cursor-readme.template.md .cursor/README.md
@@ -89,53 +119,46 @@ Combined with `.cursorrules` protocols, the agent:
 | Type | Files | Purpose |
 |------|-------|---------|
 | **Passive** (ReadOnly) | PROJECT_BRIEF, TECH_STACK, ARCHITECTURE | Stable context rarely changed |
-| **Active** (Read/Write) | ROADMAP, LESSONS, DECISIONS | Frequently updated knowledge |
+| **Protected** (Approval) | PRODUCT_ROADMAP (scope changes) | Requires approval for changes |
+| **Active** (Read/Write) | LESSONS, DECISIONS | Frequently updated knowledge |
 | **Session** (High-frequency) | CURRENT_OBJECTIVE, TASK_LOG | Updated every session |
 
 ### The Plan-and-Confirm Protocol
 
 Every session starts with:
-1. Agent reads PRODUCT_ROADMAP.md
-2. Agent proposes a numbered plan
-3. User approves, modifies, or redirects
-4. Agent executes and updates progress
+1. Agent checks for active `.plan.md` files (v2.0)
+2. Agent verifies current branch (v2.0)
+3. Agent reads PRODUCT_ROADMAP.md
+4. Agent proposes a numbered plan
+5. User approves, modifies, or redirects
+6. Agent executes and updates progress
 
 This prevents the agent from going off-track and ensures alignment.
 
-### Architecture Decision Records (ADRs)
+### Plan File Continuity (v2.0)
 
-When making architectural choices, record them:
-
-```markdown
-## ADR-001: PostgreSQL over SQLite
-
-**Date:** 2024-01-15
-**Status:** Accepted
-
-### Context
-Need a database for the application.
-
-### Decision
-Use PostgreSQL 15.
-
-### Rationale
-- Better concurrency
-- JSONB support
-- Production-ready
-```
-
-### Lessons Learned
-
-When discovering gotchas, record them:
+For multi-session work, plan files are authoritative:
 
 ```markdown
-## Database: Session Leak
-
-**Problem:** Connections exhausted after hours
-**Root Cause:** Sessions not closed
-**Solution:** Use context managers
-**Prevention:** Add integration test
+---
+name: User Authentication System
+todos:
+  - id: e2-ws2.1-auth
+    content: "[E2 > WS2.1] Implement JWT tokens"
+    status: in_progress
+---
 ```
+
+See `guides/PLAN_CONTINUITY.md` for details.
+
+### Branch Protection (v2.0)
+
+Agent verifies branch state at session start:
+- Warns if on main/master
+- Suggests feature branch naming: `feat/`, `fix/`, `refactor/`, `docs/`
+- Handles uncommitted changes gracefully
+
+See `guides/BRANCH_PROTECTION.md` for details.
 
 ---
 
@@ -145,11 +168,12 @@ When discovering gotchas, record them:
 cursor-memory-bank/
 ├── README.md                 # This file
 ├── QUICKSTART.md             # Step-by-step first use
+├── CHANGELOG.md              # Version history (v2.0)
 ├── LICENSE                   # MIT License
 ├── prompts/
 │   └── initialize.md         # The "bootstrap" prompt
 ├── templates/
-│   ├── .cursorrules          # Memory Bank rules (Sections 9-11)
+│   ├── .cursorrules          # Memory Bank rules (4-pillar structure)
 │   ├── memory/*.template.md  # Long-term context templates
 │   ├── active_sprint/*.template.md  # Session templates
 │   ├── cursor-readme.template.md    # .cursor/README.md template
@@ -158,9 +182,11 @@ cursor-memory-bank/
 │       └── sample.feature    # Gherkin example
 ├── guides/
 │   ├── FILE_BOUNDARIES.md    # Access control cheatsheet
+│   ├── PLAN_CONTINUITY.md    # Multi-session plan workflow (v2.0)
+│   ├── BRANCH_PROTECTION.md  # Branch naming and protection (v2.0)
 │   ├── DECISION_HEURISTIC.md # When DECISION vs LESSON
 │   └── CUSTOMIZATION.md      # Adapting for different stacks
-└── examples/                 # (optional) Reference implementations
+└── examples/                 # Reference implementations
 ```
 
 ---
@@ -180,21 +206,25 @@ The Memory Bank works with any tech stack. See `guides/CUSTOMIZATION.md` for:
 
 ### 1. Start Every Session Right
 
-Read the roadmap, propose a plan, wait for approval. Don't dive into code.
+Check for active plans, verify branch, read the roadmap, propose a plan, wait for approval. Don't dive into code.
 
-### 2. Record Decisions Immediately
+### 2. Use Feature Branches
+
+Always work on feature branches (`feat/`, `fix/`, `refactor/`). Never commit directly to main.
+
+### 3. Record Decisions Immediately
 
 When you make a choice ("Let's use X instead of Y"), add an ADR before you forget the rationale.
 
-### 3. Record Lessons After Debugging
+### 4. Record Lessons After Debugging
 
 When you fix a tricky bug, document the problem, cause, and solution.
 
-### 4. Keep the Roadmap Current
+### 5. Keep the Roadmap Current
 
 Update task statuses as you complete work. Mark items `[x]` done.
 
-### 5. Hand Off Cleanly
+### 6. Hand Off Cleanly
 
 At session end, update CURRENT_OBJECTIVE and TASK_LOG for the next session.
 
@@ -231,6 +261,10 @@ The agent reads files as needed. Long files can be split or summarized. The two-
 
 Absolutely. The BDD testing with pytest-bdd is optional. The core Memory Bank (`.cursor/` directory structure and protocols) works independently.
 
+### Q: What's different in v2.0?
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete list. Key additions: 4-pillar structure, plan file continuity, branch protection, and tool permissions matrix.
+
 ---
 
 ## Contributing
@@ -261,4 +295,3 @@ Inspired by:
 ---
 
 **Stop losing context. Start banking memories.**
-
