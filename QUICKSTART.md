@@ -2,6 +2,8 @@
 
 Get the Memory Bank running in your project in 5 minutes.
 
+**Version:** 2.0
+
 ---
 
 ## Prerequisites
@@ -40,7 +42,9 @@ Review the proposed roadmap and approve it.
 
 ### Step 6: Add Rules to .cursorrules
 
-Copy the contents of `templates/.cursorrules` (Sections 9-11) into your project's `.cursorrules` file.
+Copy the contents of `templates/.cursorrules` into your project's `.cursorrules` file.
+
+> **Note (v2.0):** The template now uses a 4-pillar structure. You can customize sections 02 (Infrastructure) and 03 (Development) for your project's specific needs.
 
 **Done!** Your Memory Bank is ready.
 
@@ -54,6 +58,7 @@ Copy the contents of `templates/.cursorrules` (Sections 9-11) into your project'
 # From your project root
 mkdir -p .cursor/memory
 mkdir -p .cursor/active_sprint
+mkdir -p .cursor/plans          # New in v2.0
 ```
 
 ### Step 2: Copy Templates
@@ -86,13 +91,17 @@ Edit each file, replacing `<placeholders>` with your project's information:
 
 ### Step 4: Add .cursorrules
 
-Append the Memory Bank protocols to your `.cursorrules`:
+Copy the Memory Bank protocols to your `.cursorrules`:
 
 ```bash
 cat templates/.cursorrules >> .cursorrules
 ```
 
-Or manually copy Sections 9-11 from `templates/.cursorrules`.
+> **Note (v2.0):** The template uses a 4-pillar structure:
+> - **01_AGENT_PROTOCOL** - Memory bank, startup, planning, closeout
+> - **02_INFRASTRUCTURE** - Customize for your project
+> - **03_DEVELOPMENT** - Customize for your project
+> - **04_QUALITY_ASSURANCE** - Testing protocol
 
 ### Step 5: (Optional) Set Up Testing
 
@@ -116,13 +125,15 @@ Open a new Cursor chat and ask:
 
 > "Based on the product roadmap, what should we work on next?"
 
-### Expected Behavior
+### Expected Behavior (v2.0)
 
 The agent should:
-1. ✅ Reference PRODUCT_ROADMAP.md
-2. ✅ Identify the next pending task
-3. ✅ Propose a numbered plan
-4. ✅ Wait for your approval
+1. ✅ Check for active `.plan.md` files
+2. ✅ Verify current git branch
+3. ✅ Reference PRODUCT_ROADMAP.md
+4. ✅ Identify the next pending task
+5. ✅ Propose a numbered plan
+6. ✅ Wait for your approval
 
 If this happens, your Memory Bank is working!
 
@@ -130,6 +141,8 @@ If this happens, your Memory Bank is working!
 
 ## First Session Checklist
 
+- [ ] Agent checks for active plan files
+- [ ] Agent verifies branch (warns if on main)
 - [ ] Agent reads roadmap context
 - [ ] Agent proposes plan before coding
 - [ ] You approve or redirect the plan
@@ -145,13 +158,19 @@ If this happens, your Memory Bank is working!
 
 **Cause:** .cursorrules not updated with Memory Bank protocol
 
-**Fix:** Ensure Sections 9-11 from `templates/.cursorrules` are in your `.cursorrules`
+**Fix:** Ensure the 4-pillar template from `templates/.cursorrules` is in your `.cursorrules`
 
 ### Agent Starts Coding Without Plan
 
 **Cause:** Protocol not enforced
 
-**Fix:** Remind the agent: "Please follow the startup protocol in .cursorrules Section 9"
+**Fix:** Remind the agent: "Please follow the startup protocol in .cursorrules Section 1.2"
+
+### Agent Commits to Main Branch
+
+**Cause:** Branch protection not followed
+
+**Fix:** Remind the agent: "Please check the current branch and create a feature branch"
 
 ### Files Not Created
 
@@ -159,25 +178,52 @@ If this happens, your Memory Bank is working!
 
 **Fix:** Manually create directories and set permissions
 
+### Agent Ignores Active Plan File
+
+**Cause:** Plan file not in `.cursor/plans/`
+
+**Fix:** Move plan file to `.cursor/plans/` directory
+
 ---
 
 ## Next Steps
 
 1. **Read the Guides:**
    - `guides/FILE_BOUNDARIES.md` - Understand access controls
+   - `guides/PLAN_CONTINUITY.md` - Multi-session workflow (v2.0)
+   - `guides/BRANCH_PROTECTION.md` - Branch naming and safety (v2.0)
    - `guides/DECISION_HEURISTIC.md` - Know when to record what
    - `guides/CUSTOMIZATION.md` - Adapt for your stack
 
-2. **Record Your First Decision:**
+2. **Create a Feature Branch:**
+   ```bash
+   git checkout -b feat/e1-<your-first-feature>
+   ```
+
+3. **Record Your First Decision:**
    Add an ADR for a recent architectural choice
 
-3. **Record Your First Lesson:**
+4. **Record Your First Lesson:**
    Document a gotcha you've encountered
 
-4. **Complete Your First Task:**
+5. **Complete Your First Task:**
    Pick a task from the roadmap and complete the full workflow
 
 ---
 
-**You're ready to code with persistent memory!**
+## Version 2.0 Key Changes
 
+| Feature | What Changed |
+|---------|--------------|
+| **Template Structure** | Now uses 4-pillar layout instead of Sections 9-11 |
+| **Plan Continuity** | Agent checks `.cursor/plans/` for active plans |
+| **Branch Protection** | Agent verifies branch before making changes |
+| **PRODUCT_ROADMAP.md** | Now requires approval for scope changes |
+| **Session Closeout** | Includes git commit workflow |
+| **Tool Permissions** | Explicit matrix of what requires approval |
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+---
+
+**You're ready to code with persistent memory!**
