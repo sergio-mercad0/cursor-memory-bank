@@ -1,0 +1,61 @@
+---
+description: PR build, attach & verify ritual. Whenever a Pull Request is opened or a build-affecting change is pushed to one, build the installable/deployable artifact, attach it to the PR, and verify it on the target before calling the PR ready.
+alwaysApply: true
+---
+
+# PR build, attach & verify (mandatory)
+
+<!--
+HOW TO USE THIS TEMPLATE
+Copy to .cursor/rules/pr-artifact-verify.mdc only if your project produces an artifact a human
+will install or deploy (mobile app, desktop binary, container image, static site). Replace every
+<placeholder> with the real command. Delete this rule for pure libraries.
+-->
+
+Whenever you open (or push a build-affecting change to) a Pull Request, do all three of the following
+before calling the PR "ready". Do not skip any step.
+
+1. **Build** the release artifact.
+2. **Attach** it to the PR as a downloadable asset and link it in the PR body.
+3. **Verify** it on the target (device, emulator, container, staging URL): install, launch, capture evidence.
+
+## 1. Build
+
+```
+<build command, e.g. a release build with source-map upload disabled for local runs>
+```
+
+Output: `<artifact path>`. The build takes minutes and emits a long log — run it in a **throwaway
+subagent** that returns `BUILD OK/FAIL` + the last ~10 lines on failure + the artifact path. The
+parent never ingests the log.
+
+## 2. Attach
+
+For a private repo, a downloadable-from-PR link means a **pre-release asset** (one tag per PR):
+
+```
+gh release create <artifact-tag>-pr-<N> "<artifact path>" --prerelease --title "Artifact for PR #<N>" --notes "Sideload build for PR #<N>."
+# on later pushes to the same PR, replace the asset:
+gh release upload <artifact-tag>-pr-<N> "<artifact path>" --clobber
+```
+
+Then add or update a **Test artifact** section in the PR body linking the release tag.
+
+## 3. Verify on the target
+
+```
+<install command>
+<launch command>
+<evidence capture — screenshot / health-check / smoke-test command>
+```
+
+- **Prove the installed artifact is the one you built** (version string, hash, build timestamp)
+  before trusting any pass or fail. A stale install is the most common cause of phantom bugs.
+- Capture and inspect evidence **inside the subagent**; return a one-line description and a verdict,
+  never the raw image or log, to the parent.
+- Record the manual steps that cannot be automated in the PR's "Manual verification" checklist.
+
+## Notes
+
+- Changes visible only in a native build (icons, splash, native config) make steps 1 and 3 mandatory, not optional.
+- Full runbook and gotchas for the target environment: `docs/<RUNBOOK>.md`.

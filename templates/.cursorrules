@@ -5,6 +5,25 @@
 
 ---
 
+# 00_HOW_THESE_RULES_ARE_LAYERED
+
+This file is re-sent to the model on **every turn**. Every line here is a fixed per-turn cost, and a
+long rules file is a measured contributor to agents running out of context on long sessions.
+Keep it lean by putting each kind of guidance where it belongs:
+
+| Guidance | Lives in | Loaded |
+|---|---|---|
+| Hard rules the agent must never break (this file) | `.cursorrules` | Every turn |
+| Environment quirks (shell, redirection, line endings) | `.cursor/rules/environment.mdc` (`alwaysApply: true`) | Every turn, but short |
+| Contracts the agent needs only in a specific mode (plan metadata, PR ritual) | `.cursor/rules/*.mdc` (`alwaysApply: false` + a precise `description`) | When relevant |
+| Multi-step procedures the agent executes on request | `.cursor/skills/<name>/SKILL.md` | On invocation |
+| Runbooks, guides, reference tables | `docs/*.md` | When read |
+| Project memory | `.cursor/memory/`, `.cursor/active_sprint/`, `.cursor/plans/` | Per protocol below |
+
+Never duplicate a table or procedure across two of these locations. Point to the single source instead.
+
+---
+
 # 01_AGENT_PROTOCOL
 
 ## 1.1 Memory Bank System
@@ -16,18 +35,24 @@ The `.cursor/` directory is the project's persistent memory system. It enables s
 ```
 .cursor/
 ├── README.md                          # System documentation (this protocol)
-├── plans/                             # Active planning documents
-│   └── *.plan.md                      # Cursor plan files
+├── plans/                             # Active planning documents (the job queue)
+│   └── *.plan.md                      # Cursor plan files with orchestration metadata
+├── rules/                             # Cursor rule files (.mdc)
+│   ├── environment.mdc                # Shell / tooling conventions (always applied)
+│   └── orchestrator-ready-plans.mdc   # Plan metadata contract (applied when planning)
+├── skills/                            # Cursor skills (multi-step procedures)
+│   └── orchestrate-epic/              # Executes an approved plan, one subagent per workstream
+├── prompts/                           # Reusable prompts (orchestrator bootstrap, handoff)
 ├── memory/                            # Long-term context (survives sessions)
 │   ├── PROJECT_BRIEF.md               # ReadOnly - Project goals + Future Capabilities
-│   ├── TECH_STACK.md                  # ReadOnly - Technologies and versions
+│   ├── TECH_STACK.md                  # ReadOnly - Technologies, versions, capability tier
 │   ├── ARCHITECTURE.md                # ReadOnly - System design decisions
-│   ├── PRODUCT_ROADMAP.md             # Approval Required - Epics, workstreams, and tasks
+│   ├── PRODUCT_ROADMAP.md             # Approval Required - Epics, phases, workstreams
 │   ├── LESSONS_LEARNED.md             # Read/Write - Patterns, gotchas, debugging tips
 │   └── DECISION_LOG.md                # Read/Write - Architecture Decision Records (ADRs)
 └── active_sprint/                     # Short-term state (current session)
     ├── CURRENT_OBJECTIVE.md           # High-frequency - What we're doing now
-    └── TASK_LOG.md                    # High-frequency - Progress and blockers
+    └── TASK_LOG.md                    # High-frequency - Progress, blockers, resolved models
 ```
 
 ### Decision Heuristic (When to Record)
@@ -37,6 +62,7 @@ The `.cursor/` directory is the project's persistent memory system. It enables s
 - Designing database schemas
 - Establishing patterns that future code must follow
 - Making architectural trade-offs
+- Changing **process**: testing policy, capability tier, orchestration contract, branch strategy
 - Any choice that affects multiple files or future development
 - *Keyword trigger:* "I chose X over Y because..."
 
@@ -44,7 +70,9 @@ The `.cursor/` directory is the project's persistent memory system. It enables s
 - Fixing a bug that took significant debugging
 - Discovering an undocumented gotcha
 - Finding a workaround for a library limitation
-- Debugging Docker, path, or environment issues
+- Debugging container, path, shell, or environment issues
+- Discovering a **workflow** failure (a closeout that was not really done, a stale artifact that
+  was tested by mistake, an agent that ran out of context) — these are lessons too
 - Any "I wish I knew this earlier" moment
 - *Keyword trigger:* "The problem was...", "The fix was...", "Watch out for..."
 
@@ -82,7 +110,7 @@ At the start of every session, follow this sequence:
 ```
 IF .cursor/plans/*.plan.md exists AND has pending todos:
     → Resume from plan file (it is authoritative)
-    → Print remaining todos and propose next steps
+    → Print remaining todos (by phase) and propose next steps
 ELSE:
     → Continue to Step 2
 ```
@@ -93,9 +121,9 @@ ELSE:
 RUN: git branch --show-current
 IF branch is main OR master:
     → WARN user: "You are on the main branch. Create a feature branch?"
-    → Suggest: feat/, fix/, refactor/, docs/ prefix
+    → Suggest: feat/, fix/, refactor/, docs/, chore/ prefix (see 1.2.1)
 IF uncommitted changes exist:
-    → List changed files
+    → List changed files (confirm with `git diff --stat`; line-ending-only changes are noise)
     → Ask: "Commit these changes or stash before proceeding?"
 ```
 
@@ -103,14 +131,15 @@ IF uncommitted changes exist:
 
 1. **Read Roadmap First:** Read `PRODUCT_ROADMAP.md` to understand current priorities
 2. **Read Current Objective:** Check `active_sprint/CURRENT_OBJECTIVE.md` for in-progress work
-3. **Check Lessons Learned:** Review `LESSONS_LEARNED.md` for relevant gotchas
+3. **Check Lessons Learned:** Skim `LESSONS_LEARNED.md` for relevant gotchas
+4. **Environment rules are already loaded** via `.cursor/rules/environment.mdc`; do not re-derive them
 
 ### Step 4: Propose Plan
 
-Before writing ANY code, print a numbered plan of intended actions:
+Before writing ANY code, print a numbered plan referencing the Epic and Workstream from `PRODUCT_ROADMAP.md`:
 
 ```
-Based on PRODUCT_ROADMAP.md, the next priority is [Epic X > Workstream Y].
+Based on PRODUCT_ROADMAP.md, the next priority is [Epic X > WS P.O].
 
 I propose the following plan:
 1. [Action 1]
@@ -126,97 +155,179 @@ Do NOT proceed until user confirms with "approved", "yes", "go", or similar.
 
 ### Step 6: Handle Pivots
 
-If user redirects, update `CURRENT_OBJECTIVE.md` and start fresh plan.
+If user redirects, update `CURRENT_OBJECTIVE.md` and start a fresh plan.
+
+### 1.2.1 Branch Strategy (Epic Kickoff)
+
+`main` is protected and accepts changes **only through merged Pull Requests** — never commit or push directly to it.
+
+When starting a **new Epic**, always cut a fresh branch from an up-to-date `main` before writing any code:
+
+```
+git switch main
+git pull --ff-only origin main
+git switch -c feat/epic-<N>-<short-slug>      # e.g. feat/epic-3-history-log
+```
+
+Rules:
+
+- **One Epic, one branch, one PR.** Do not reuse a feature branch whose Epic PR has already merged — its history is closed. Follow-up fixes get their own branch from `main` (`fix/<slug>`).
+- **Always branch off `main`**, not off another feature branch, so each Epic's PR diff is clean against `main`.
+- Branch prefix follows the change type: `feat/`, `fix/`, `refactor/`, `docs/`, `chore/`.
+- The closing PR for the Epic is opened from this branch per §1.4.1.
+- **One active orchestrator per repository.** Two agents driving different Epics on the same clone
+  collide on shared memory-bank files, sequential artifacts (migration numbers), and untracked files.
+  If parallel Epics are unavoidable, each plan must declare which files it owns.
 
 ---
 
-## 1.3 Mode Switching (Planning vs Execution)
+## 1.3 Planning Mode (Plan → Approve → Orchestrate)
 
 ### When to Enter Planning Mode
 
-Switch to Planning Mode (create `.plan.md` file) when:
+Switch to Planning Mode (create `.cursor/plans/<slug>.plan.md`) when:
 - Task touches **more than 2 files**
-- Task involves **architectural changes**
+- Task involves **architectural changes** (schema, sync rules, navigation graph, build config)
 - Task has **multiple valid approaches** with trade-offs
 - Task requires **research or clarification** before implementation
 - User explicitly requests planning
+
+The plan file is not documentation — it is the **job queue** that execution (§1.3.2) consumes.
+Every workstream therefore carries machine-readable metadata, not just prose.
 
 ### Plan File Structure
 
 ```markdown
 ---
-name: [Descriptive Plan Name]
-overview: [One-sentence summary of what this plan accomplishes]
+name: Epic N — [Title]
+overview: [One-sentence summary]
 todos:
-  - id: [epic]-[workstream]-[task]
-    content: "[Epic X > WS Y] Task description"
+  - id: eN-ws1.1-[shortname]
+    content: "[Epic N > WS 1.1] (Phase 1) Task description"
     status: pending | in_progress | completed
+    phase: 1
+    run_as: subagent | parent
+    model_role: BUILDER | ARCHITECT | SCRIBE | DEEP | OPERATOR | BULK
+    exit_gates: [typecheck, test, lint]
+    heavy: true            # optional — sub-steps emit large tool output (builds, logs, screenshots)
 ---
 
 # [Plan Title]
 
 ## Overview
-[2-3 sentences explaining the goal and context]
+[2-3 sentences on goal and context]
 
 ## Architecture
 [Mermaid diagram showing component relationships]
 
-## Phase N: [Phase Name]
-[Detailed breakdown with code examples]
+## Phases (execution batching)
+| Phase | Workstreams | Run as | Role | Exit gates |
+|---|---|---|---|---|
+| 1 — [name] | WS 1.1, 1.2 | subagent | BUILDER | typecheck + test + lint |
+| 2 — [name] | WS 2.1 | parent-gate | DEEP | ... |
+
+## Phase 1 — [Phase Name]
+**Run as:** subagent | parent-gate
+**Inputs:** [files/sections the executing agent must read — it has no chat context]
+**Exit:** [gates that must pass before the next phase dispatches]
+
+### WS 1.1 — [Workstream Name]
+[Detailed breakdown with acceptance criteria and code examples]
+
+### WS 1.2 — [Workstream Name]
+...
+
+## Phase 2 — [Phase Name]
+...
 
 ## Rationale
 [Why this approach was chosen]
 ```
 
+**Metadata fields** (full contract in `.cursor/rules/orchestrator-ready-plans.mdc`):
+
+| Field | Meaning |
+|---|---|
+| `phase` | Execution batch. A human reviews at every phase boundary. |
+| `run_as` | Who **routes the human gate**: `subagent` = none needed; `parent` = orchestrator stops, gets user approval, relays it. A fresh subagent always performs the work either way. |
+| `model_role` | Which **role** executes (§1.3.3). Never a model name or version. |
+| `exit_gates` | Commands/checks that must pass before the todo flips to `completed`. |
+| `heavy` | Who **absorbs the tokens**: sub-steps with large output go to a throwaway subagent returning a verdict. Independent of `run_as`. |
+
 ### Todo ID Convention
 
-Format: `e{epic}-ws{workstream}.{task}-{shortname}`
+Format: `e{epic}-ws{phase}.{ordinal}-{shortname}`, content `[Epic X > WS P.O] (Phase P) description`.
 
 Examples:
-- `e0-ws0.1-dirs` - Epic 0, Workstream 0.1, task "dirs"
-- `e2-ws2.3-schema` - Epic 2, Workstream 2.3, task "schema"
+- `e1-ws1.1-store` — Epic 1, Phase 1, first workstream
+- `e2-ws3.2-closeout` — Epic 2, Phase 3, second workstream
 
-### Hierarchical Todo Format
+The Epic ID lives in the plan title / filename / roadmap entry, never inside the WS number.
+A reference like `WS 3.2` is unambiguous within one Epic plan; across Epics, qualify it ("Epic 2 WS 3.2").
 
-Todos MUST reference their Epic and Workstream for traceability:
-- Format: `[Epic X > WS Y] Task description`
-- IDs should encode hierarchy: `eX-wsY.Z-taskname`
+**Todo Status Markers:** `[ ]` pending, `[x]` completed, `[~]` in progress, `[-]` cancelled (with reason).
 
-**Todo Status Markers:**
-- `[ ]` - Pending
-- `[x]` - Completed
-- `[~]` - In Progress (use sparingly, prefer atomic tasks)
-- `[-]` - Cancelled/Skipped (with reason)
+### 1.3.1 Phase Grouping (workstream batching)
 
-### Incremental Build Gates
+A **Phase** is a batch of workstreams that share a coherent execution context and end at a
+human checkpoint. Phases prevent context rot during execution and mark natural quality-gate boundaries.
 
-For multi-phase work, complete each phase before proceeding:
+- Workstreams are numbered `<phase>.<ordinal>`; the ordinal **resets to 1 in each phase**.
+- Example, 11 workstreams in 4 phases: `WS 1.1, 1.2 | 2.1, 2.2, 2.3 | 3.1, 3.2, 3.3, 3.4 | 4.1, 4.2`.
+- Single-phase plans still use the convention (`WS 1.1, 1.2, 1.3, ...`).
 
-```
-Phase 1: Dependencies
-  └── [ ] All imports resolve
-  └── [ ] Types compile
-  └── [ ] Linter passes
+How to draw phase boundaries:
 
-Phase 2: Implementation
-  └── [ ] Core logic complete
-  └── [ ] Unit tests pass
-  └── [ ] No regressions
+| Trigger | Implication |
+|---|---|
+| WS A's output is consumed by WS B | Different phases. B is downstream. |
+| WS A and B share types, files, or design tokens | Same phase. Batch together. |
+| WS produces a verifiable artifact (store, schema set, primitive set, route shell) | Phase boundary candidate. |
+| WS touches protected files (§1.5) or opens a PR | `run_as: parent` — the parent routes the user gate. |
+| WS runs builds, long test suites, captures screenshots | `heavy: true` — a throwaway subagent absorbs the output. |
 
-Phase 3: Integration
-  └── [ ] End-to-end works
-  └── [ ] Documentation updated
-  └── [ ] PR ready for review
-```
+Each phase in the plan body states **Run as**, **Inputs** (exact files to read), and **Exit** gates.
 
-### Quality Gates Checklist
+### 1.3.2 Orchestrated Execution
 
-Before marking a phase complete:
-- [ ] Code compiles without errors
-- [ ] Linter passes (or violations justified)
-- [ ] New code has tests (if applicable)
-- [ ] No unintended side effects
-- [ ] Changes match the approved plan
+An approved plan is executed by the `orchestrate-epic` skill (`.cursor/skills/orchestrate-epic/SKILL.md`).
+The rules below are the contract; the skill is the procedure.
+
+1. **One fresh subagent per workstream.** Never batch workstreams into one agent; never let the
+   orchestrator do the work itself. The parent is a dispatcher and a gate router only.
+2. **`run_as` routes the gate; `heavy` absorbs the tokens.** A `run_as: parent` workstream means
+   the parent stops, presents the gate to the user, and relays approval in the dispatch prompt —
+   then a subagent performs the work. Conflating "needs a human" with "parent does it" is how
+   orchestrators run out of context.
+3. **Dispatch by reference.** Point the subagent at the plan's WS section on disk; do not re-paste the spec.
+4. **Cap returns.** Subagents return ≤8 lines: role + resolved model, files changed, gate results,
+   blockers. No tables, no code unless a gate failed.
+5. **Delegate the noise, keep the gate.** Builds, log scraping, screenshots, long test runs go to a
+   throwaway subagent that returns `OK/FAIL` + the few relevant lines — never the raw output or image.
+6. **Unplanned scope is still delegated.** A bug found during verification is investigated by a fresh
+   subagent that returns the root cause and fix, not inline in the parent.
+7. **Cycle the orchestrator at phase boundaries — unconditionally.** Write the handoff prompt
+   (`.cursor/prompts/handoff.md` shape), start a fresh chat. Durable state is on disk
+   (plan todos + `TASK_LOG.md` + commits), so nothing is lost.
+8. **Never mark a workstream complete with a red gate.** One focused retry via `resume`, then stop and report.
+
+### 1.3.3 Model Routing by Role
+
+Plans and skills name a **role**, never a model. Model slugs turn over every few weeks and a pinned
+slug goes stale silently; a role never changes. The orchestrator resolves the role to a live slug at
+dispatch time and **records the resolved slug** in `TASK_LOG.md` so the routing policy has a feedback loop.
+
+| Role | Use for |
+|---|---|
+| `BUILDER` | Stores, queries, components, tests, wiring — **the default** |
+| `ARCHITECT` | Epic planning, architecture, ADR drafting, code review |
+| `SCRIBE` | Docs, roadmap prose, PR bodies, memory-bank updates |
+| `DEEP` | Subtle correctness: timing, persistence, transactions, schema cascade |
+| `OPERATOR` | Terminal, native builds, emulators/devices, CI debugging |
+| `BULK` | High-volume mechanical passes |
+
+Selection rule: **pick on cost-of-being-wrong, not task difficulty.** Escalate only after a failure.
+Ladders, resolution procedure, and never-do list: `docs/MODEL_ROUTING.md` (single source of truth — do not restate).
 
 ---
 
@@ -226,61 +337,98 @@ Before marking a phase complete:
 
 Enter closeout sequence when:
 - Task is complete
-- Context window approaching limit
+- Context window approaching half full on an orchestration session, or the limit on any session
 - User requests pivot to unrelated work
 - Session ending (user signs off)
 
 ### Closeout Sequence
 
 1. **Update Memory Bank:**
-   - Update `TASK_LOG.md` with progress made
+   - Update `TASK_LOG.md` with progress made (one line per workstream: `[WS <id>] <role> → <resolved model> — <outcome>`)
    - Update `CURRENT_OBJECTIVE.md` if objective changed
    - Record any decisions in `DECISION_LOG.md`
    - Record any lessons in `LESSONS_LEARNED.md`
-   - Update `PRODUCT_ROADMAP.md` task statuses
+   - Update `PRODUCT_ROADMAP.md` task statuses (protected — confirm first)
 
-2. **Git Commit (if changes made):**
+2. **Git Commit AND Push (if changes made):**
    ```
    git add -A
    git commit -m "<type>: <description>"
+   git push -u origin <branch>
    ```
-   
-   Commit types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
+   Commit types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
+   **A roadmap ✅ without a pushed commit is a lie the next agent will believe.** Closeout is not
+   done until the remote has the work.
 
-3. **Handoff Summary:**
+3. **Handoff Summary** (also the seed of the next agent's prompt — see `.cursor/prompts/handoff.md`):
    ```
    ## Session Summary
-   - **Completed:** [list of completed items]
+   - **Completed:** [workstreams, with resolved models]
+   - **Branch + gate state:** [branch, last commit, typecheck/test/lint status]
    - **In Progress:** [current state of incomplete items]
-   - **Blocked:** [any blockers for next session]
-   - **Next Steps:** [recommended actions for next session]
+   - **Remaining phases:** [phase → workstreams, each with run_as + model_role]
+   - **Blocked:** [any blockers]
+   - **Next Steps / stop conditions:** [single next action; when to stop and ask]
    ```
 
 ### Agent Handoff Verification Checklist
 
 Before marking a task complete, verify:
 - [ ] All acceptance criteria met
-- [ ] Tests pass (build-time and runtime if applicable)
+- [ ] All exit gates pass (`<typecheck>`, `<test>`, `<lint>` — see §4.5)
 - [ ] No linter errors introduced
-- [ ] Documentation updated (if API changed)
-- [ ] PRODUCT_ROADMAP.md reflects completion
-- [ ] Changes committed to feature branch
+- [ ] Documentation updated (if API or schema changed)
+- [ ] `PRODUCT_ROADMAP.md` reflects completion
+- [ ] Changes committed **and pushed** to the feature branch
+
+### 1.4.1 Epic Closeout PR (mandatory)
+
+At the end of **every** Epic — the moment its last workstream flips to ✅ in `PRODUCT_ROADMAP.md` —
+open a closing Pull Request that aggregates the Epic's work. No Epic is "done" until its PR exists on the remote.
+
+**Trigger:** the instant the last workstream is marked complete and closeout commits are pushed. Do not wait to be asked.
+
+**Conventions:**
+
+- **Source:** the Epic's feature branch. **Target:** `main`.
+- **Title:** `Epic N: <Epic Title>`.
+- **Body sections (required, in order):**
+  1. `## Summary` — 2–4 bullets at user/architecture level (not a commit list).
+  2. `## Workstreams completed` — checklist mirroring `PRODUCT_ROADMAP.md`.
+  3. `## Decisions captured` — new ADRs (link `DECISION_LOG.md` headings) and lessons added.
+  4. `## Quality gates` — pasted results of every gate in §4.5, plus CI status.
+  5. `## Manual verification` — device/staging smoke steps that cannot be automated.
+  6. `## Follow-ups` — anything intentionally deferred.
+  7. `## Test artifact` *(if the project produces an installable/deployable artifact)* — link to the
+     build attached to the PR, and how it was verified on the target. See `.cursor/rules/pr-artifact-verify.mdc`.
+
+**How:** `gh pr create --base main --head <branch> --title "..." --body-file <tmpfile>`.
+If `gh` is missing, ask once whether to install it; otherwise open the compare URL
+`https://github.com/<owner>/<repo>/compare/main...<branch>?expand=1` and ask the user to click "Create pull request".
+
+**Prove the artifact.** Before trusting any pass/fail observed on a device, emulator, or staging
+environment, confirm the installed artifact is the one you just built (version string, hash, or
+build timestamp). Stale artifacts have produced hours of phantom debugging.
+
+The same ritual applies to any major workstream the user explicitly elevates ("treat this like an epic").
 
 ---
 
-## 1.5 Protected Files & Cascade Rules
+## 1.5 Protected Files & Tool Permissions
 
-### Protected Files Protocol
+### Protected Files (require approval before modification)
 
-The following files are **design documents** and require user approval before modification:
-
-| File | Approval Required | When to Modify |
-|------|:-----------------:|----------------|
-| PROJECT_BRIEF.md | **YES** | Only if project scope changes |
-| TECH_STACK.md | **YES** | Only when adding new technology |
-| ARCHITECTURE.md | **YES** | Only for significant design changes |
-| PRODUCT_ROADMAP.md | **YES** | When adding/removing epics or changing scope |
-| .cursor/README.md | **YES** | Only when memory bank protocol changes |
+| File | Approval | When to Modify |
+|------|:--------:|----------------|
+| `.cursor/memory/PROJECT_BRIEF.md` | **YES** | Only if project scope changes |
+| `.cursor/memory/TECH_STACK.md` | **YES** | Only when adding/replacing a dependency tier |
+| `.cursor/memory/ARCHITECTURE.md` | **YES** | Only for significant design changes |
+| `.cursor/memory/PRODUCT_ROADMAP.md` | **YES** | When adding/removing epics or changing scope |
+| `.cursor/README.md` | **YES** | Only when memory bank protocol changes |
+| `.cursorrules` | **YES** | Only with explicit user approval |
+| `.cursor/rules/*.mdc`, `.cursor/skills/**` | **YES** | Protocol changes — record an ADR |
+| `<build / app config>` (e.g. `app.config.*`, `Dockerfile`, CI workflow) | **YES** | Always confirm — affects every build |
+| `<schema sources>` (ORM schema, migrations, sync schema) | **YES** | Confirm — changes cascade to every layer |
 
 **Before modifying a protected file, agent MUST:**
 1. Explain what change is needed and why
@@ -288,184 +436,178 @@ The following files are **design documents** and require user approval before mo
 3. Wait for user approval ("approved", "yes", "go")
 4. After modification, add an ADR to `DECISION_LOG.md` explaining the change
 
+**Relayed approval.** In orchestrated execution the parent obtains this approval and states it
+explicitly in the subagent's dispatch prompt ("the user approved editing `<file>` for this
+workstream"). A subagent that needs a protected-file edit without that statement stops and reports.
+
 ### Read/Write Files (No Approval Needed)
 
 | File | When to Modify |
 |------|----------------|
-| LESSONS_LEARNED.md | After debugging sessions |
-| DECISION_LOG.md | After architectural choices |
-| CURRENT_OBJECTIVE.md | At session start and when pivoting |
-| TASK_LOG.md | Throughout session |
+| `LESSONS_LEARNED.md` | After debugging sessions or workflow failures |
+| `DECISION_LOG.md` | After architectural or process choices |
+| `CURRENT_OBJECTIVE.md` | At session start and when pivoting |
+| `TASK_LOG.md` | Throughout session; one line per workstream with the resolved model |
+| `.cursor/plans/*.plan.md` | Status flips during execution; content edits only in Planning Mode |
 
 ### Cascade Rules
 
 | When This Changes | Also Update |
 |-------------------|-------------|
-| PROJECT_BRIEF.md (scope change) | ARCHITECTURE.md if design affected, DECISION_LOG.md always |
-| TECH_STACK.md (new technology) | ARCHITECTURE.md if integration needed, PROJECT_BRIEF.md if capability affected, DECISION_LOG.md always |
-| ARCHITECTURE.md (design change) | PROJECT_BRIEF.md if future capabilities affected, DECISION_LOG.md always |
-| PRODUCT_ROADMAP.md (scope change) | PROJECT_BRIEF.md if mission affected, DECISION_LOG.md always |
-| .cursor/README.md (protocol change) | .cursorrules to match, DECISION_LOG.md always |
+| `PROJECT_BRIEF.md` (scope change) | `ARCHITECTURE.md` if design affected, `DECISION_LOG.md` always |
+| `TECH_STACK.md` (new technology / tier) | `ARCHITECTURE.md` if integration needed, `PROJECT_BRIEF.md` if capability affected, `DECISION_LOG.md` always |
+| `ARCHITECTURE.md` (design change) | `PROJECT_BRIEF.md` if future capabilities affected, `DECISION_LOG.md` always |
+| `PRODUCT_ROADMAP.md` (scope change) | `PROJECT_BRIEF.md` if mission affected, `DECISION_LOG.md` always |
+| `.cursor/README.md` (protocol change) | `.cursorrules` to match, `DECISION_LOG.md` always |
+| Schema source of truth | Every mirrored schema layer, then a generated migration, then an ADR if non-trivial |
 
 ### Tool Permissions Matrix
 
 | Tool/Action | Allowed | Requires Approval |
 |-------------|:-------:|:-----------------:|
 | Read any file | ✅ | No |
-| Write to `.cursor/active_sprint/` | ✅ | No |
-| Write to `.cursor/memory/` (LESSONS, DECISIONS) | ✅ | No |
-| Write to protected files | ⚠️ | **YES** |
-| Git commit to feature branch | ✅ | No |
-| Git commit to main/master | ❌ | **YES** |
+| Write to `.cursor/active_sprint/`, `.cursor/plans/` | ✅ | No |
+| Write to `LESSONS_LEARNED.md`, `DECISION_LOG.md` | ✅ | No |
+| Write to protected files | ⚠️ | **YES** (may be relayed to a subagent) |
+| Dispatch subagents for planned workstreams | ✅ | No |
+| Git commit / push to feature branch | ✅ | No |
+| Git commit / push to `main`/`master` | ❌ | **YES** |
+| Open a Pull Request | ⚠️ | **YES** (the user gate of the closeout workstream) |
 | Create new files in project | ✅ | No |
 | Delete files | ⚠️ | **YES** |
 | Run shell commands | ✅ | No |
-| Run destructive commands (rm -rf, etc.) | ❌ | **YES** |
+| Install software or send data off-machine | ⚠️ | **YES** |
+| Destructive commands (`rm -rf`, force push, dropping a database) | ❌ | **YES** |
+
+---
+
+## 1.6 Environment Conventions
+
+Every shell/tooling quirk of the development machine lives in **`.cursor/rules/environment.mdc`**
+(`alwaysApply: true`) — command chaining, redirection, heredocs, search-tool choice, line endings,
+output hygiene. That file exists because prose reminders in prompts did not stop the same failed
+command from recurring once per session for months; a rule file did.
+
+Rules for this file:
+- When a tool call fails for an environment reason twice, add the rule there — not to a prompt, not to this file.
+- Never restate its contents elsewhere. Point to it.
+- CI runs on a clean runner and is the authoritative gate; local runs are advisory
+  (`.github/workflows/ci.yml`). Promote CI to a required check only after it has gone green on a real PR.
+
+---
+
+## 1.7 External Tracker Mirror (Optional)
+
+If a tracker MCP (Notion, Linear, Jira, ...) is configured for this project:
+
+**Per task, before starting:** read the linked PRD / acceptance criteria; paste the ID and an AC summary into the plan section and the PR body.
+
+**On completion:** update the tracker task status; append architectural notes covering decisions or trade-offs.
+
+If no tracker MCP is configured, skip this section. The Memory Bank is the primary source of truth either way;
+the tracker is a mirror and may lag.
 
 ---
 
 # 02_INFRASTRUCTURE
 
-<!-- 
+<!--
 PROJECT-SPECIFIC SECTION
 Customize this section for your project's infrastructure needs.
 
 Common subsections:
-- 2.1 Version Control Protocol
-- 2.2 Pathing & Portability
-- 2.3 Docker/Container Standards
-- 2.4 Environment Configuration
-- 2.5 Deployment Pipeline
+- 2.1 Stack (do not deviate) — list tiers; note the capability tier from TECH_STACK.md
+- 2.2 Environment configuration (which file reads env vars, what keys are required)
+- 2.3 Path aliases / pathing & portability
+- 2.4 Schema cascade (source of truth → mirrored layers → migration → ADR)
+- 2.5 CI: which gates run on every PR, advisory vs required status
+- 2.6 Pre-commit hooks: lint + format on staged files only (never repo-wide rewrites)
+- 2.7 Operational runbooks in docs/ for anything an agent must drive (emulators, devices, deploys)
+- 2.8 Environment / shell conventions → point to .cursor/rules/environment.mdc, do not restate
 
 Example:
-## 2.1 Version Control Protocol
-- All commits must reference an issue or epic
-- Feature branches: feat/e{epic}-{description}
-- Bug fix branches: fix/{issue-number}-{description}
+## 2.4 Schema Cascade
+Source of truth is <system>. When changing schema:
+1. Update <source> first.
+2. Regenerate or hand-mirror types in <layer 2>.
+3. Update <layer 3> to match.
+4. Generate migration: <command>.
+5. Add an ADR if the change is non-trivial.
+Never let the layers drift.
 -->
 
 ---
 
 # 03_DEVELOPMENT
 
-<!-- 
+<!--
 PROJECT-SPECIFIC SECTION
 Customize this section for your project's development standards.
 
 Common subsections:
-- 3.1 Code Style & Formatting
-- 3.2 Error Handling Patterns
-- 3.3 Logging Standards
-- 3.4 API Design Conventions
-- 3.5 Database Access Patterns
+- 3.1 Hard rules (type safety, no escape hatches without a comment, explicit return types)
+- 3.2 Forbidden (patterns that are never acceptable in this codebase)
+- 3.3 Code organization (feature folders, shared primitives, where tests live)
+- 3.4 Data flow (one diagram: UI → ephemeral state → persisted queries → storage → sync)
+- 3.5 Error handling / logging / observability standards
 
 Example:
-## 3.1 Error Handling
-- All errors must be logged with context
-- Use structured error types, not generic exceptions
-- Include correlation IDs for tracing
+## 3.1 Hard Rules
+- No `any`. If you need an escape hatch, use `unknown` and narrow.
+- No unchecked casts without a `// cast: <reason>` comment.
+- All data crossing a network or storage boundary passes through a schema validator first.
+- UI components are pure. Side effects live in stores, hooks, or /lib.
 -->
 
 ---
 
 # 04_QUALITY_ASSURANCE
 
-## 4.1 Testing Protocol
+## 4.1 Testing Strategy (Scoped TDD)
 
-### Definition of Done
+Not every layer deserves the same rigor. Apply the strictest discipline where mistakes ship silently,
+and behavior-level tests where the user can see the result.
 
-A task is NOT complete until it has a passing user story test.
+| Layer | Strategy |
+|---|---|
+| State stores, hooks, services, data queries, validators, utilities, pure logic | **Strict Red-Green-Refactor.** Write the failing test first, watch it fail, implement, refactor. |
+| UI components / screens | **Behavior tests.** Write tests alongside the component focused on what the user sees and does. |
+| Native builds, device flows, deployments | **Runbook + manual verification** recorded in the PR's "Manual verification" section. |
 
-### User Story Persistence
+A task is NOT complete until its tests pass.
 
-User Stories MUST be persisted in `tests/features/` directories:
-- NOT just in chat or TASK_LOG.md
-- Feature files are the permanent specification
+## 4.2 Forbidden Test Patterns
 
-### Directory Structure
+- Snapshot tests of full screens or pages.
+- Tests that assert on internal state shapes (test behavior, not implementation).
+- Mocks that duplicate the implementation under test.
+- Tests that pass only because of a timing sleep; pin the clock instead.
+- "Fixing" a flaky test by reordering — a mitigation is not a fix; record the root cause or the lesson.
 
-```
-tests/
-├── conftest.py                    # Project-wide pytest-bdd fixtures
-└── features/                      # Cross-service integration stories
+## 4.3 Test Locations
 
-<src>/*/tests/
-├── conftest.py                    # Service-specific fixtures
-├── features/                      # Service behavior stories
-└── (existing test files)
-```
+- Co-locate next to the file under test (`Foo.ts` + `Foo.test.ts`, or an adjacent `__tests__/`).
+- Cross-cutting and setup tests live in `tests/`.
+- Global mocks for external services live in one setup file; per-test overrides must leave a comment saying why.
 
----
+## 4.4 Definition of Done for a Workstream
 
-## 4.2 Two-Phase Testing Strategy
+- [ ] Tests exist per the §4.1 table and pass
+- [ ] No regressions in existing tests
+- [ ] Exit gates from the plan pass (§4.5)
+- [ ] Any new gotcha recorded in `LESSONS_LEARNED.md`
 
-### Phase 1: Build-Time Tests (Docker Gate)
+## 4.5 Quality Gates
 
-- **When:** Runs inside `docker build` (Stage 1 of multi-stage build)
-- **Scope:** Unit Tests + Mocked Gherkin scenarios ONLY
-- **Constraints:** NO database, NO network, NO external services
-- **Command:** `pytest <src>/*/tests/ -v --ignore=**/integration* -m "not slow"`
-- **Gate:** If tests fail, Docker build FAILS
+Before marking any workstream complete, run and report every gate the plan lists (defaults below;
+replace with this project's commands):
 
-### Phase 2: Runtime Tests (Deployment Gate)
-
-- **When:** Runs via `docker compose run` or CI pipeline after containers start
-- **Scope:** Full Integration Tests + Real Asset Tests
-- **Access:** Database, network, file system, real assets
-- **Command:** `docker compose run --rm <service> pytest tests/ -v -m integration`
-- **Gate:** If tests fail, deployment is blocked
-
-### Performance Note (Heavy Tests Decoupling)
-
-Tests involving heavy processing MUST be marked `@slow` or `@heavy`:
-- Tests involving large files, ML inference
-- Tests requiring GPU
-- Tests with significant I/O (scanning directories with many files)
-
-Run ONLY in:
-- Runtime phase (docker compose)
-- Dedicated CI pipeline stage
-- Manual validation before release
-
-*Rationale:* Build speed is critical for developer iteration. A 30-second build with mocked tests enables rapid feedback; a 5-minute build with heavy processing destroys productivity.
-
----
-
-## 4.3 Test Type Markers
-
-| Marker | Phase | Description |
-|--------|-------|-------------|
-| `@unit` | Build-time | Mocked, no I/O |
-| `@integration` | Runtime | Requires DB/services |
-| `@browser` | Runtime | Uses browser tools |
-| `@real_asset` | Runtime | Uses actual files/assets |
-| `@slow` / `@heavy` | Decoupled | Heavy processing |
-
----
-
-## 4.4 TDD Workflow
-
-1. **Ask User:** Before implementing, discuss the test scenario
-2. **Create Feature File:** Write .feature file with appropriate markers
-3. **Write Failing Test:** Implement step definitions in conftest.py
-4. **Implement:** Write minimum code to pass test
-5. **Verify:** Run build-time tests, then runtime tests
-6. **Mark Complete:** Only after both phases pass
-
-### User Story Format
-
-```gherkin
-@unit
-Feature: [Feature Name]
-  As a [role]
-  I want [capability]
-  So that [benefit]
-
-  Scenario: [Scenario Name]
-    Given [precondition]
-    When [action]
-    Then [expected result]
-```
+- [ ] `<typecheck>` passes (e.g. `npm run typecheck`, `mypy`, `cargo check`)
+- [ ] `<lint>` passes (or violations justified in the commit message)
+- [ ] `<test>` passes (or new tests added in red-green TDD)
+- [ ] `<format:check>` passes on the changed files
+- [ ] CI is green on the PR (authoritative; local runs are advisory)
+- [ ] `PRODUCT_ROADMAP.md` updated
 
 ---
 

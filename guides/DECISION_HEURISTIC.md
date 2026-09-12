@@ -25,6 +25,11 @@ Record in DECISION_LOG.md when you're making a **choice that affects the future*
 | Designing schema | "We designed the users table with..." |
 | Picking a pattern | "We use the repository pattern for..." |
 | Infrastructure choice | "We chose Docker Compose over Kubernetes for..." |
+| **Process choice** (v3.0) | "We test logic layers with strict TDD and UI with behavior tests because..."; "The capability tier is local-only until..."; "Protected-file approval is relayed to subagents because..." |
+
+Process decisions are ADRs too. A testing policy, a capability tier, a branch strategy, or a change to
+the orchestration contract shapes every future workstream exactly as a library choice does — and is
+just as likely to be re-argued from scratch by the next agent if the rationale is not written down.
 
 ### Keyword Triggers
 
@@ -80,6 +85,11 @@ Record in LESSONS_LEARNED.md when you **discover something through experience**:
 | Performance insight | "Batching queries reduced time by..." |
 | Environment issue | "Docker on Windows requires..." |
 | Library quirk | "This library silently fails when..." |
+| **Workflow failure** (v3.0) | "The roadmap said ✅ but nothing was pushed..."; "We debugged a stale build for two hours..."; "The orchestrator ran out of context because..." |
+
+Workflow failures are the lessons with the highest payoff: each one usually becomes a checkbox in
+`.cursorrules` §1.4 or a line in `.cursor/rules/environment.mdc`. Record the measured cause
+("appeared in 32 of 82 sessions") — see `guides/RETROSPECTIVE.md`.
 
 ### Keyword Triggers
 

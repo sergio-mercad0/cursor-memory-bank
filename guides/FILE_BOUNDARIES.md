@@ -13,12 +13,22 @@ Quick reference for Memory Bank file access permissions, tool permissions, and u
 | **ARCHITECTURE.md** | ✅ Always | ⚠️ Rarely | **YES** | Only for significant design changes |
 | **PRODUCT_ROADMAP.md** | ✅ Always | ⚠️ Scope changes | **YES** | When adding/removing epics or changing scope |
 | **.cursor/README.md** | ✅ Always | ⚠️ Rarely | **YES** | Only when protocol changes |
-| **LESSONS_LEARNED.md** | ✅ Always | ✅ Often | No | After debugging sessions |
-| **DECISION_LOG.md** | ✅ Always | ✅ Often | No | After architectural choices |
+| **.cursorrules** | ✅ Always | ⚠️ Rarely | **YES** | Only with explicit user approval |
+| **.cursor/rules/*.mdc**, **.cursor/skills/** | ✅ Always | ⚠️ Rarely | **YES** | Protocol changes — record an ADR |
+| **Build / app config** (e.g. `app.config.*`, `Dockerfile`, CI workflow) | ✅ Always | ⚠️ Rarely | **YES** | Affects every build |
+| **Schema sources** (ORM schema, migrations, sync schema) | ✅ Always | ⚠️ Rarely | **YES** | Cascades to every layer |
+| **LESSONS_LEARNED.md** | ✅ Always | ✅ Often | No | After debugging sessions or workflow failures |
+| **DECISION_LOG.md** | ✅ Always | ✅ Often | No | After architectural or process choices |
 | **CURRENT_OBJECTIVE.md** | ✅ Always | ✅ Every session | No | At session start and when pivoting |
-| **TASK_LOG.md** | ✅ Always | ✅ Frequently | No | Throughout session |
+| **TASK_LOG.md** | ✅ Always | ✅ Frequently | No | Throughout session; one line per workstream with the resolved model |
+| **.cursor/plans/*.plan.md** | ✅ Always | ✅ Status flips | No | Statuses during execution; content only in Planning Mode |
 
-> **Note (v2.0):** PRODUCT_ROADMAP.md now requires approval for scope changes (adding/removing epics, changing priorities). Updating task statuses (`[ ]` → `[x]`) does NOT require approval.
+> **Note (v2.0):** PRODUCT_ROADMAP.md requires approval for scope changes (adding/removing epics, changing priorities). Updating task statuses (`[ ]` → `[x]`) does NOT require approval.
+
+> **Note (v3.0 — relayed approval):** in orchestrated execution the parent agent obtains approval for a
+> protected-file edit and states it explicitly in the subagent's dispatch prompt ("the user approved
+> editing `<file>` for this workstream"). The subagent then performs the edit. A subagent that needs a
+> protected-file edit without that sentence stops and reports.
 
 ---
 
@@ -31,14 +41,18 @@ Quick reference for Memory Bank file access permissions, tool permissions, and u
 | **Write to LESSONS_LEARNED.md** | ✅ | No | After debugging |
 | **Write to DECISION_LOG.md** | ✅ | No | After decisions |
 | **Update task statuses in ROADMAP** | ✅ | No | `[ ]` → `[x]` transitions |
-| **Write to protected files** | ⚠️ | **YES** | See protected files list |
+| **Write to `.cursor/plans/`** | ✅ | No | Status flips; content edits in Planning Mode |
+| **Write to protected files** | ⚠️ | **YES** | May be relayed to a subagent (see note above) |
 | **Add/remove epics from ROADMAP** | ⚠️ | **YES** | Scope changes |
-| **Git commit to feature branch** | ✅ | No | Normal workflow |
-| **Git commit to main/master** | ❌ | **YES** | Protected branches |
+| **Dispatch subagents for planned workstreams** | ✅ | No | One fresh subagent per workstream |
+| **Git commit / push to feature branch** | ✅ | No | Normal workflow; push is part of closeout |
+| **Git commit / push to main/master** | ❌ | **YES** | Protected branches — PR only |
+| **Open a Pull Request** | ⚠️ | **YES** | The user gate of the closeout workstream |
 | **Create new files in project** | ✅ | No | Normal workflow |
 | **Delete files** | ⚠️ | **YES** | Destructive action |
 | **Run shell commands** | ✅ | No | Normal workflow |
-| **Run destructive commands** | ❌ | **YES** | rm -rf, drop table, etc. |
+| **Install software / send data off-machine** | ⚠️ | **YES** | Confirm first |
+| **Run destructive commands** | ❌ | **YES** | rm -rf, force push, drop database, etc. |
 
 ---
 
@@ -132,6 +146,34 @@ These files define the project's foundation. Changes require explicit user appro
 
 ---
 
+### 6. .cursorrules, .cursor/rules/*.mdc, .cursor/skills/** (v3.0)
+**Contains:** The rules the agent runs under, environment conventions, orchestration procedures
+
+**Modify When:**
+- A retrospective (see `guides/RETROSPECTIVE.md`) shows a recurring failure the current rule does not prevent
+- A per-plan override of a skill keeps recurring — then the skill is wrong, fix the skill
+- The user states a standing preference ("always do X when Y") — capture it the same session
+
+**Approval Process:**
+1. Quote the evidence (which sessions, how often)
+2. Show the exact rule text to add or change, and which file it belongs in (see `.cursorrules` §00)
+3. Wait for user approval — a user instruction that *is* the rule counts as approval
+4. Record an ADR
+
+---
+
+### 7. Build config and schema sources (v3.0)
+**Contains:** Whatever affects every build (app config, Dockerfile, CI workflow) and whatever cascades to every layer (ORM schema, migrations, sync schema)
+
+**Modify When:** the plan's workstream says so, with `run_as: parent` so the gate is routed to the user
+
+**Approval Process:**
+1. Show the diff and the cascade (what else must change)
+2. Wait for approval; in orchestrated execution the parent relays it in the dispatch prompt
+3. Apply the whole cascade in one workstream; generate the migration; add an ADR if non-trivial
+
+---
+
 ## Read/Write Files (No Approval Needed)
 
 These files are updated frequently as part of normal development.
@@ -187,7 +229,7 @@ These files are updated frequently as part of normal development.
 ### TASK_LOG.md
 **Update Triggers:**
 - Task started → Log it
-- Task completed → Mark done
+- Workstream completed → `[WS <id>] <role> → <resolved model slug> — <outcome>` (this line is the only record of which model actually ran)
 - Blocker found → Document it
 - Decision made → Note it
 - Session ends → Summarize
@@ -205,6 +247,8 @@ When a protected file changes, other files may need updates:
 | ARCHITECTURE.md (design) | PROJECT_BRIEF.md (if capabilities affected), DECISION_LOG.md (always) |
 | PRODUCT_ROADMAP.md (scope) | PROJECT_BRIEF.md (if mission affected), DECISION_LOG.md (always) |
 | .cursor/README.md (protocol) | .cursorrules (to match), DECISION_LOG.md (always) |
+| Schema source of truth | Every mirrored schema layer, generated migration, DECISION_LOG.md if non-trivial |
+| .cursorrules (rule added) | .cursor/README.md if the protocol summary is affected; never duplicate the rule text elsewhere |
 
 ---
 
@@ -213,8 +257,9 @@ When a protected file changes, other files may need updates:
 ```
 Need to update a file?
 │
-├── Is it protected? (PROJECT_BRIEF, TECH_STACK, ARCHITECTURE, .cursor/README)
-│   ├── YES → Ask for approval first
+├── Is it protected? (PROJECT_BRIEF, TECH_STACK, ARCHITECTURE, .cursor/README, .cursorrules,
+│                     .cursor/rules, .cursor/skills, build config, schema sources)
+│   ├── YES → Ask for approval first (or check the dispatch prompt for relayed approval)
 │   │         └── After approval, also add ADR to DECISION_LOG.md
 │   └── NO → Update freely
 │
