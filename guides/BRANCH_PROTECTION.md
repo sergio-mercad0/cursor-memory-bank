@@ -88,22 +88,35 @@ Should I create a feature branch, or do you want to proceed on main?
 
 ## Creating Feature Branches
 
-### From Main
+### Epic Kickoff (v3.0) — one Epic, one branch, one PR
+
+`main` accepts changes **only through merged Pull Requests**. When starting a new Epic, always cut a
+fresh branch from an up-to-date `main` before writing any code:
 
 ```bash
-# Ensure main is up to date
-git checkout main
-git pull origin main
-
-# Create feature branch
-git checkout -b feat/e2-ws2.1-user-auth
+git switch main
+git pull --ff-only origin main
+git switch -c feat/epic-3-history-log
 ```
 
-### From Existing Branch
+(The same three commands work in PowerShell; chain them with `;`, not `&&`.)
+
+Rules:
+
+- **Do not reuse a feature branch whose Epic PR has merged** — its history is closed. Follow-up fixes
+  get their own branch from `main` (`fix/<slug>`).
+- **Always branch off `main`**, not off another feature branch, so each Epic's PR diff is clean.
+- **One active orchestrator per repository.** Two agents driving different Epics on the same clone
+  collide on shared memory-bank files, sequential artifacts (migration numbers), and untracked files.
+  If parallel Epics are unavoidable, each plan declares the files it owns.
+- The Epic's closing PR is opened from this branch (see "Epic Closeout PR" below).
+
+### Workstream-level branches (optional)
+
+Within a large Epic you may branch per workstream and PR into the Epic branch:
 
 ```bash
-# Create branch from current HEAD
-git checkout -b feat/e2-ws2.2-auth-ui
+git switch -c feat/e2-ws2.2-auth-ui
 ```
 
 ---
@@ -149,8 +162,8 @@ git commit -m "docs(readme): update installation steps"
 # Feature with plan reference
 git commit -m "feat(e2-ws2.1): implement login endpoint
 
-Plan: e2-ws2.1-auth-system.plan.md
-Task: task-3 (Create login API)"
+Plan: epic_2_auth_system.plan.md
+Workstream: e2-ws2.1-login-api"
 
 # Bug fix with issue reference
 git commit -m "fix(api): handle null user in response
@@ -193,11 +206,15 @@ Plan: <plan-file-if-applicable>
 Progress: <brief progress note>"
 ```
 
-### 3. Push to Remote (Optional)
+### 3. Push to Remote (Required)
 
 ```bash
-git push origin <branch-name>
+git push -u origin <branch-name>
 ```
+
+Pushing is not optional at closeout. A roadmap ✅ with no pushed commit is the single most misleading
+state the next agent can inherit: memory says "done", the remote says nothing happened. Closeout is
+complete only when the remote has the work — and, at an Epic boundary, when the PR exists.
 
 ---
 
@@ -238,6 +255,55 @@ git push origin feat/e2-ws2.1-user-auth
 gh pr create --title "feat(e2-ws2.1): User authentication" \
              --body "Implements login, logout, and token refresh."
 ```
+
+### Epic Closeout PR (v3.0, mandatory)
+
+The moment the last workstream of an Epic flips to ✅ in `PRODUCT_ROADMAP.md` and the closeout
+commits are pushed, open the Epic's closing PR. Do not wait to be asked. No Epic is "done" until its
+PR exists on the remote.
+
+- **Source:** the Epic branch. **Target:** `main`.
+- **Title:** `Epic N: <Epic Title>`.
+- **Body** (sections required, in order):
+
+```markdown
+## Summary
+- 2–4 bullets at user / architecture level (not a commit list)
+
+## Workstreams completed
+- [x] WS 1.1 <name>
+- [x] WS 1.2 <name>
+- [x] WS 2.1 <name>
+
+## Decisions captured
+- ADR-0NN <title> (DECISION_LOG.md)
+- Lesson: <title> (LESSONS_LEARNED.md)
+
+## Quality gates
+- typecheck: pass | test: pass (N suites / M tests) | lint: pass | format:check: pass
+- CI: <link to green run>
+
+## Manual verification
+- [ ] <smoke step that cannot be automated>
+
+## Follow-ups
+- <deferred item> → <where it is tracked>
+
+## Test artifact   <!-- only if the project ships an installable/deployable artifact -->
+- <link to the attached build> — verified on <target>; installed version <x> matches build <sha>
+```
+
+Write the body to a file and pass it, so multi-line text survives every shell:
+
+```bash
+gh pr create --base main --head feat/epic-3-history-log --title "Epic 3: History Log" --body-file .git/PR_BODY.md
+```
+
+If `gh` is unavailable, open `https://github.com/<owner>/<repo>/compare/main...<branch>?expand=1`
+and ask the user to click "Create pull request".
+
+If the project produces an installable artifact, the PR is not ready until the artifact is built,
+attached, and verified on the target — see `templates/cursor-rules/pr-artifact-verify.template.mdc`.
 
 ### After Merge
 
@@ -339,8 +405,14 @@ git commit -m "feat(scope): description"
 # Push to remote
 git push -u origin <branch-name>
 
-# Session closeout
-git add -A && git commit -m "chore: session closeout - <progress>"
+# Session closeout (bash)
+git add -A && git commit -m "chore: session closeout - <progress>" && git push
+
+# Session closeout (PowerShell — `&&` is not a valid token)
+git add -A; git commit -m "chore: session closeout - <progress>"; git push
+
+# Epic closeout
+gh pr create --base main --head <branch> --title "Epic N: <Title>" --body-file .git/PR_BODY.md
 ```
 
 ---

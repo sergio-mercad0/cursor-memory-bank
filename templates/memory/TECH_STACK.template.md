@@ -2,6 +2,14 @@
 
 **Last Updated:** <YYYY-MM-DD>  
 **Purpose:** Technology choices for <Project Name>
+**Tier:** <e.g. `local-only` | `auth-only` | `full-sync` — delete if the stack has no optional layers>
+
+<!--
+The capability tier names which optional layers (auth, sync, payments, telemetry, ...) are IN or OUT
+right now. Agents must respect it: introducing a layer that the tier excludes requires an ADR and a
+tier change here, not a quiet import. It stops "helpful" agents from wiring up a backend the project
+has deliberately not adopted yet.
+-->
 
 ---
 

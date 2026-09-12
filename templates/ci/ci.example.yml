@@ -1,0 +1,58 @@
+# Quality gates on every PR and on main.
+#
+# Copy to .github/workflows/ci.yml and replace the <placeholder> commands with this project's gates
+# (they should be the same commands .cursorrules §4.5 lists).
+#
+# Why this exists: agents self-report gate results from their local machine. Until CI ran, every
+# "typecheck + test + lint green" line in a PR body was an unverified local claim on a possibly
+# dirty Windows checkout. A clean Linux runner is the authoritative gate and also settles
+# line-ending questions permanently.
+#
+# Rollout: ship this as ADVISORY first (not a required status check). Promote it to required in the
+# branch-protection settings only after it has reported green on at least one real PR — requiring a
+# check that has never run is how a repo locks itself out.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # <toolchain setup — e.g. actions/setup-node@v4 with cache, actions/setup-python@v5, dtolnay/rust-toolchain>
+      # - uses: actions/setup-node@v4
+      #   with:
+      #     node-version-file: .nvmrc
+      #     cache: npm
+
+      - name: Install
+        run: <install command — prefer a lockfile-strict install, e.g. `npm ci`; if the lockfile was generated on another OS and CI rejects it, regenerate it on Linux once>
+
+      - name: Typecheck
+        run: <typecheck command>
+
+      - name: Lint
+        run: <lint command>
+
+      - name: Format check
+        run: <format:check command>
+
+      - name: Test
+        run: <test command — with CI reporter / no watch mode>
+
+      # Optional project-specific guards. Examples that have paid for themselves:
+      # - name: Migration numbering collision
+      #   run: <script that fails if two migrations share a sequence number>
+      # - name: Roadmap drift
+      #   run: <script that compares PRODUCT_ROADMAP.md ✅ items against merged PRs>

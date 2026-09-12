@@ -4,6 +4,17 @@
 
 ---
 
+## <YYYY-MM-DD> — Epic <N> Phase <P> (orchestrated)
+
+<!-- Orchestrated phases use the dense form: one line per workstream, written by the subagent that
+     did the work as its last step. The resolved model slug is the only record of which model ran. -->
+
+- [WS 1.1] BUILDER → <resolved slug> — <one-line outcome>; gates typecheck ✅ test ✅ (N/M) lint ✅
+- [WS 1.2] DEEP → <resolved slug> — <one-line outcome>; protected edit approved by user, ADR-0NN
+- Phase 1 exit gates ✅ · handoff prompt written · next: Phase 2 in a fresh chat
+
+---
+
 ## <YYYY-MM-DD> - <Session Description>
 
 ### Session Goal
@@ -92,12 +103,18 @@ One sentence describing the session's objective.
 - Things to remember
 ```
 
+### Workstream line format (orchestrated execution)
+```
+[WS <phase>.<ordinal>] <ROLE> → <resolved model slug> — <one-line outcome>; gates <results>
+```
+
 ### Best Practices
 1. **Update throughout session** - Don't wait until the end
 2. **Be specific** - Include file names, function names, etc.
 3. **Link to decisions** - Reference ADRs when making architectural choices
 4. **Record blockers immediately** - Don't forget them
-5. **Add context for future sessions** - Your future self will thank you
+5. **Record the resolved model** - a role with no logged slug cannot be audited or tuned
+6. **Add context for future sessions** - Your future self will thank you
 
 ---
 

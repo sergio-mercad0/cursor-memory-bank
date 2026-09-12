@@ -37,16 +37,23 @@
 ## Epic 1: <Core Feature Epic> 🔥 ✅
 
 **Goal:** <One-sentence goal for this Epic>
+**Branch:** `feat/epic-1-<slug>` · **Plan:** `.cursor/plans/epic_1_<slug>.plan.md` · **PR:** #<N>
 
-### Workstream 1.1: <Workstream Name> ✅
+<!-- From Epic 1 on, workstreams are grouped into phases and numbered <phase>.<ordinal>
+     (the ordinal resets each phase). Epic 0 above keeps the flat form. -->
+
+### Phase 1 — <Phase Name> ✅
+
+#### Workstream 1.1: <Workstream Name> ✅
 - [x] <Completed task>
 - [x] <Completed task>
 
-### Workstream 1.2: <Workstream Name> ✅
-- [x] <Completed task>
+#### Workstream 1.2: <Workstream Name> ✅
 - [x] <Completed task>
 
-### Workstream 1.3: <Workstream Name> 🔄
+### Phase 2 — <Phase Name> 🔄
+
+#### Workstream 2.1: <Workstream Name> 🔄
 - [x] <Completed task>
 - [~] <In progress task>
 - [ ] <Pending task>
@@ -56,29 +63,22 @@
 ## Epic 2: <Feature Epic> ⏳ 📋
 
 **Goal:** <One-sentence goal for this Epic>
+**Branch:** — · **Plan:** — (planned when the Epic is kicked off)
 
-### Workstream 2.1: <Workstream Name> ⏳
-- [ ] <Pending task>
-- [ ] <Pending task>
-- [ ] <Pending task>
+### Phase 1 — <Phase Name> ⏳
 
-### Workstream 2.2: <Workstream Name> ⏳
+#### Workstream 1.1: <Workstream Name> ⏳
 - [ ] <Pending task>
 - [ ] <Pending task>
 
----
-
-## Epic 3: <Feature Epic> ⏳ 📋
-
-**Goal:** <One-sentence goal for this Epic>
-
-### Workstream 3.1: <Workstream Name> ⏳
-- [ ] <Pending task>
+#### Workstream 1.2: <Workstream Name> ⏳
 - [ ] <Pending task>
 
-### Workstream 3.2: <Workstream Name> ⏳
-- [ ] <Pending task>
-- [ ] <Pending task>
+### Phase 2 — Closeout ⏳
+
+#### Workstream 2.1: Roadmap + memory + closeout PR ⏳
+- [ ] Update roadmap statuses, record ADRs / lessons
+- [ ] Push; open `Epic 2: <Title>` PR against `main`
 
 ---
 
@@ -120,10 +120,15 @@
 * 📋 Low Priority - Do when high priority work is complete
 
 ### Progress Indicators
-* ✅ Complete - All workstreams finished
+* ✅ Complete - All workstreams finished **and pushed**; for an Epic, its closeout PR exists
 * 🔄 In Progress - At least one workstream active
 * ⏳ Pending - Not yet started
 * ❌ Blocked - Cannot proceed until blocker resolved
+
+### Numbering
+* Workstreams are `<phase>.<ordinal>`; the ordinal resets in each phase (`1.1, 1.2 | 2.1, 2.2, 2.3 | 3.1`).
+* Plan todo IDs mirror this: `e{epic}-ws{phase}.{ordinal}-{shortname}`.
+* Flipping a task `[ ]` → `[x]` needs no approval; adding/removing Epics or changing scope does.
 
 ---
 

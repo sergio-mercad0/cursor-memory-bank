@@ -36,28 +36,51 @@ Plan files live in `.cursor/plans/`:
 ```
 .cursor/
 └── plans/
-    ├── e1-ws1.2-auth-system.plan.md
-    ├── e2-ws2.1-database-migration.plan.md
-    └── memory_bank_framework_sync.plan.md
+    ├── epic_1_auth_system.plan.md
+    ├── epic_2_database_migration.plan.md
+    └── fix_login_timeout.plan.md
 ```
 
-Naming convention: `{epic}-{workstream}-{description}.plan.md` or descriptive name.
+Naming convention: `epic_{N}_{description}.plan.md` for Epics, or a descriptive slug for smaller work.
+
+> **Cursor Plan mode gotcha (v3.0):** Plan mode may write the plan file **outside the repository**
+> (under the user's `.cursor/plans/`) and may **strip frontmatter fields it does not recognise**. Before
+> executing, copy the plan into the repo's `.cursor/plans/` and re-check that every todo still carries
+> the orchestration metadata below. The `orchestrate-epic` skill does this as its first preflight step.
 
 ---
 
 ## Plan File Structure
 
+The plan is the **job queue** that execution consumes, so every workstream carries machine-readable
+metadata (full contract: `templates/cursor-skills/orchestrate-epic/plan-template.md`).
+
 ```markdown
 ---
-name: [Descriptive Plan Name]
+name: Epic 2 — Database Migration
 overview: [One-sentence summary]
 todos:
-  - id: task-1
-    content: "[Epic X > WS Y] First task"
+  - id: e2-ws1.1-migration-script
+    content: "[Epic 2 > WS 1.1] (Phase 1) Create migration script"
     status: pending
-  - id: task-2
-    content: "[Epic X > WS Y] Second task"
+    phase: 1
+    run_as: subagent
+    model_role: BUILDER
+    exit_gates: [typecheck, test, lint]
+  - id: e2-ws1.2-schema
+    content: "[Epic 2 > WS 1.2] (Phase 1) Update schema (protected — parent routes the gate)"
     status: pending
+    phase: 1
+    run_as: parent
+    model_role: DEEP
+    exit_gates: [typecheck, test, lint]
+  - id: e2-ws2.1-closeout
+    content: "[Epic 2 > WS 2.1] (Phase 2) Roadmap + memory + closeout PR"
+    status: pending
+    phase: 2
+    run_as: parent
+    model_role: SCRIBE
+    exit_gates: [typecheck, test, lint, format:check]
 ---
 
 # [Plan Title]
@@ -68,15 +91,48 @@ todos:
 ## Architecture
 [Mermaid diagram if multi-component]
 
-## Phase 1: [Phase Name]
-[Detailed breakdown]
+## Phases (execution batching)
+| Phase | Workstreams | Run as | Role | Exit gates |
+|---|---|---|---|---|
+| 1 — Migration | WS 1.1, 1.2 | subagent (1.2 parent-gate) | BUILDER / DEEP | typecheck + test + lint |
+| 2 — Closeout | WS 2.1 | parent-gate | SCRIBE | + format:check |
 
-## Phase 2: [Phase Name]
-[Detailed breakdown]
+## Phase 1 — [Phase Name]
+**Run as:** subagent
+**Inputs:** [exact files the executing agent must read — it has no chat context]
+**Exit:** [gates]
+
+### WS 1.1 — [Workstream Name]
+[Acceptance criteria, approach, code examples]
+
+### WS 1.2 — [Workstream Name]
+...
+
+## Phase 2 — [Phase Name]
+...
 
 ## Rationale
 [Why this approach was chosen]
 ```
+
+### Todo ID convention
+
+`e{epic}-ws{phase}.{ordinal}-{shortname}` — the ordinal **resets to 1 in every phase**, so `WS 3.2`
+means "phase 3, second workstream" within this Epic. Content strings read
+`[Epic X > WS P.O] (Phase P) description`. This is the one format used across `.cursorrules`, the
+README, and this guide.
+
+### Metadata fields
+
+| Field | Meaning |
+|---|---|
+| `phase` | Execution batch; a human reviews at every phase boundary |
+| `run_as` | `subagent` = no human gate; `parent` = the orchestrator stops, gets approval, relays it — a subagent still does the work |
+| `model_role` | `BUILDER` / `ARCHITECT` / `SCRIBE` / `DEEP` / `OPERATOR` / `BULK` — never a model name |
+| `exit_gates` | What must pass before the todo flips to `completed` |
+| `heavy` | Optional; sub-steps produce large output (builds, logs, screenshots) — a throwaway subagent absorbs it |
+
+See `guides/ORCHESTRATION.md` for how these are consumed.
 
 ---
 
@@ -115,63 +171,65 @@ At session start, the agent MUST check for active plans:
 ### Example Startup Message
 
 ```
-I found an active plan: e2-ws2.1-database-migration.plan.md
+I found an active plan: epic_2_database_migration.plan.md
 
 ## Remaining Todos
-- [x] task-1: Create migration script
-- [~] task-2: Update schema (IN PROGRESS)
-- [ ] task-3: Run migration tests
-- [ ] task-4: Update documentation
+Phase 1 — Migration
+- [x] e2-ws1.1-migration-script  (BUILDER → <resolved slug>)
+- [~] e2-ws1.2-schema            (DEEP, parent-gate — IN PROGRESS, 3/5 tables)
+Phase 2 — Closeout
+- [ ] e2-ws2.1-closeout          (SCRIBE, parent-gate)
 
-I'll continue from task-2 (Update schema). Should I proceed?
+I'll continue from WS 1.2 (Update schema). It is a parent-gated protected-file edit — do you approve
+the schema change described in the plan section?
 ```
 
 ---
 
 ## Handoff Protocol
 
-When a session ends with incomplete plan todos:
+When a session ends with incomplete plan todos — and **always at a phase boundary** during
+orchestrated execution:
 
 ### 1. Update Todo Statuses
 
-Mark completed tasks and note progress on in-progress tasks:
+Flip statuses **after** the exit gates pass, never before. A todo marked `completed` while the work
+sits half-finished in the working tree is the most expensive lie a plan can tell the next agent.
 
 ```yaml
 todos:
-  - id: task-1
-    content: "Create migration script"
+  - id: e2-ws1.1-migration-script
     status: completed
-  - id: task-2
-    content: "Update schema"
-    status: in_progress  # Note: 3 of 5 tables done
-  - id: task-3
-    content: "Run migration tests"
+  - id: e2-ws1.2-schema
+    status: in_progress  # 3 of 5 tables done; partial work uncommitted — do not wipe
+  - id: e2-ws2.1-closeout
     status: pending
 ```
 
-### 2. Add Session Notes
+### 2. Log the workstream
 
-Append to the plan file:
+Append one line per workstream to `.cursor/active_sprint/TASK_LOG.md`, including the model that
+actually ran:
 
-```markdown
-## Session Notes
-
-### Session 2024-01-15 14:30
-- Completed task-1
-- Started task-2, finished tables: users, orders, products
-- Remaining for task-2: inventory, shipments
-- No blockers
+```
+[WS 1.1] BUILDER → <resolved slug> — migration script + tests (12 passing)
 ```
 
-### 3. Update CURRENT_OBJECTIVE.md
+### 3. Write the handoff prompt
+
+Fill `.cursor/prompts/handoff.md` (Completed / branch + gate state / partial work / remaining phases
+with `run_as` + `model_role` / pending gates / stop conditions / single next action) and print it.
+The next session starts in a **fresh chat** from `.cursor/prompts/orchestrate.md` with this pasted in.
+
+### 4. Update CURRENT_OBJECTIVE.md
 
 ```markdown
 # Current Objective
 
-**Plan:** e2-ws2.1-database-migration.plan.md
-**Current Task:** task-2 (Update schema)
-**Progress:** 3/5 tables migrated
-**Next Step:** Continue with inventory table
+**Plan:** epic_2_database_migration.plan.md
+**Phase:** 1 of 2 — WS 1.2 in progress (3/5 tables)
+**Branch:** feat/epic-2-database-migration (pushed: yes, last gates green)
+**Next Step:** Approve schema gate, dispatch WS 1.2 as DEEP
 ```
 
 ---
@@ -190,9 +248,11 @@ When all todos are complete:
 
 ```bash
 # Move completed plan to archive
-mv .cursor/plans/e2-ws2.1-database-migration.plan.md \
-   .cursor/plans/archive/e2-ws2.1-database-migration.plan.md
+mv .cursor/plans/epic_2_database_migration.plan.md \
+   .cursor/plans/archive/epic_2_database_migration.plan.md
 ```
+
+Plan completion at an Epic boundary also triggers the **Epic closeout PR** (`.cursorrules` §1.4.1).
 
 ---
 
@@ -201,13 +261,14 @@ mv .cursor/plans/e2-ws2.1-database-migration.plan.md \
 If multiple plan files exist:
 
 1. **Ask user which to prioritize** if unclear
-2. **Work on one plan at a time** to maintain focus
-3. **Document dependencies** between plans if they exist
+2. **Work on one plan at a time** to maintain focus — and run **one orchestrator per repository**
+3. **Document dependencies** between plans if they exist; if two plans must run in parallel, each
+   declares the files it owns so their agents do not collide
 
 ```
 I found multiple active plans:
-1. e2-ws2.1-database-migration.plan.md (3 pending todos)
-2. e3-ws3.2-api-refactor.plan.md (5 pending todos)
+1. epic_2_database_migration.plan.md (3 pending todos)
+2. epic_3_api_refactor.plan.md (5 pending todos)
 
 Which should I continue? Or should I prioritize based on the roadmap?
 ```
@@ -249,12 +310,14 @@ Which should I continue? Or should I prioritize based on the roadmap?
 Reference plan IDs in commit messages:
 
 ```bash
-git commit -m "feat(e2-ws2.1): migrate users and orders tables
+git commit -m "feat(e2-ws1.2): migrate users and orders tables
 
-Plan: e2-ws2.1-database-migration.plan.md
-Task: task-2 (Update schema)
+Plan: epic_2_database_migration.plan.md
+Workstream: e2-ws1.2-schema
 Progress: 2/5 tables complete"
 ```
+
+(On PowerShell, write multi-line messages to a file and use `git commit -F <file>`; heredocs do not exist there.)
 
 ---
 

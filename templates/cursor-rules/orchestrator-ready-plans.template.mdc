@@ -1,0 +1,45 @@
+---
+description: When planning an Epic or creating/editing a plan under .cursor/plans/, make the plan orchestrator-ready by applying the workstream metadata contract. Use when the user asks to plan an Epic, kick off an Epic, or create/update a .cursor/plans/*.plan.md file.
+globs:
+alwaysApply: false
+---
+
+# Orchestrator-ready plans
+
+Any `.cursor/plans/*.plan.md` produced during planning MUST carry per-workstream orchestration
+metadata so the `orchestrate-epic` skill can execute it without manual triage.
+
+Before finishing a plan, read `.cursor/skills/orchestrate-epic/plan-template.md` and ensure every
+todo in the frontmatter has:
+
+- `phase` — integer execution batch (a human reviews at each phase boundary)
+- `run_as` — `subagent` (no parent-held gate) or `parent` (the orchestrator routes the human gate,
+  presents it to the user, and relays the approved context); a fresh subagent always performs the work
+- `model_role` — a valid role, never a model version (omit only to let the orchestrator infer from task type)
+- `exit_gates` — list of gates that must pass before the workstream is marked complete
+- `heavy` — optional `true`; set it on any workstream whose sub-steps emit large tool output
+  (native builds, CI logs, screenshots, long test runs) so the orchestrator offloads that noise to
+  the subagent performing the work while the parent retains the human gate.
+  `run_as` decides who routes the gate; `heavy` decides who absorbs the tokens.
+
+Also include the phases-summary table (with a Role column) as shown in the template, and for each
+phase in the body: **Run as**, **Inputs** (exact files the executing agent must read), **Exit** gates.
+
+Rules:
+
+- Protected-file edits (see `.cursorrules` §1.5), ADR acceptance, and PR creation use
+  `run_as: parent` for the user gate; after the user approves, the orchestrator relays that approval
+  in the dispatch prompt and a subagent performs the work.
+- Valid `model_role` values: `BUILDER`, `ARCHITECT`, `SCRIBE`, `DEEP`, `OPERATOR`, `BULK`.
+  **Never write a model name or version into a plan** — model lineups turn over every few weeks and
+  pinned slugs go stale silently. The orchestrator resolves the role to a live slug at dispatch time.
+  Role definitions, family ladders, and the resolution procedure live in `docs/MODEL_ROUTING.md`,
+  which is the single source of truth; do not restate them in a plan. An optional `model` field
+  exists to pin one specific slug, but it needs a stated reason.
+- Workstreams are numbered `<phase>.<ordinal>`; the ordinal resets to 1 in each phase. Todo IDs
+  follow `e{epic}-ws{phase}.{ordinal}-{shortname}`.
+- Cursor's Plan mode may write the plan **outside the repository** and may **strip custom frontmatter
+  fields**. Before handing off to the orchestrator: copy the plan into `.cursor/plans/`, re-check that
+  every todo still carries the fields above, and backfill any that were dropped.
+- This extends `.cursorrules` §1.3 / §1.3.1 — it does not replace them. Keep the standard plan
+  structure and add the metadata the orchestrator consumes on top.

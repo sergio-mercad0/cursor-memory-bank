@@ -1,0 +1,76 @@
+---
+description: Shell and tooling conventions for this development machine. Every rule here exists because violating it cost a failed tool call, and a failed call still dumps an error block into context. Get these right on the first attempt.
+alwaysApply: true
+---
+
+# Environment conventions
+
+<!--
+HOW TO USE THIS TEMPLATE
+Copy to .cursor/rules/environment.mdc and keep ONLY the sections that apply to your machine.
+Fill each section with the concrete rule, not a reminder to "be careful".
+Add a rule the second time the same environment failure happens; never add it to a prompt instead.
+Keep this file short — it is loaded on every turn.
+
+A filled-in Windows/PowerShell example follows each heading; a bash/zsh note is at the end.
+-->
+
+## Command chaining
+
+- <!-- PowerShell --> Chain with `;`. **Never `&&`** — PowerShell rejects it as a token.
+  For true short-circuit behaviour, check `$LASTEXITCODE` or use `if ($?) { ... }`.
+
+## Heredocs and multi-line input
+
+- <!-- PowerShell --> `$(cat <<'EOF' ... EOF)` is bash. PowerShell parses `<` as a reserved operator
+  and the command dies before running. For a multi-line commit or PR body, write the text to a file
+  and pass `git commit -F <file>` / `gh pr create --body-file <file>` (a path under `.git/` keeps it
+  out of the working tree), or use repeated `-m` flags.
+
+## Redirection
+
+- <!-- PowerShell --> **Never `2>nul`.** There is no `nul` device; it creates a file literally named
+  `nul` in the working directory. Use `-ErrorAction SilentlyContinue` on cmdlets or `2>$null` for native commands.
+- Never redirect binary output with `>`. It re-encodes and corrupts the payload (this silently destroys
+  screenshots pulled from a device). Write on the device/remote and pull the file instead.
+
+## Search and file tools
+
+- Prefer the `Grep` tool over `Glob` when either would work; `Glob` has returned zero results for
+  patterns that exist.
+- <!-- PowerShell --> For directory listings use `Get-ChildItem`, not `ls -R` or `find`.
+- Use the dedicated read/edit tools rather than `cat`, `head`, `tail`, `sed`, or `awk`.
+
+## Keep output small
+
+- Filter noisy commands inline (`| Select-String -NotMatch 'warning:'`, `| Select-Object -First 20`,
+  or `| grep -v` / `| head -20` on POSIX shells).
+- Batch related git queries into one filtered call rather than three separate ones.
+- Large tool output belongs in a throwaway subagent that returns a verdict, not in the main window.
+
+## Line endings
+
+<!-- Delete this section if the repo does not mix Windows checkouts with LF-normalised files. -->
+
+- `core.autocrlf=true` locally while `.gitattributes` declares `* text=auto eol=lf`. Consequences:
+  - `git status` lists files as modified that have **no content diff**. Confirm with
+    `git --no-pager diff --stat` before believing a file changed.
+  - `git diff` prints a wall of `warning: in the working copy of ...` lines. Filter them out.
+  - **Never run the formatter repo-wide in write mode.** Scope it to changed files, with
+    `--end-of-line auto` (or the formatter's equivalent).
+  - A repo-wide format-check failure is not automatically "just line endings". Re-check the changed
+    files scoped before dismissing it. CI on a clean runner is the authoritative check.
+
+## Verify the artifact under test
+
+- Before trusting any pass/fail seen on a device, emulator, container, or staging environment,
+  confirm the running artifact is the one you just built (version string, hash, build timestamp).
+  Hot-reload caches and stale installs have produced hours of phantom debugging.
+
+## POSIX shells (bash / zsh)
+
+<!-- If your machine uses bash/zsh, replace the PowerShell items above with these and delete the rest. -->
+
+- `&&` and heredocs work; `2>/dev/null` is correct.
+- Still never redirect binary output with `>` through a tool that may re-encode text.
+- Still prefer `Grep`/`Read`/`Edit` tools over `grep`/`cat`/`sed` for file operations.

@@ -2,6 +2,8 @@
 
 **Last Updated:** <YYYY-MM-DD>  
 **Session:** <Brief session description>
+**Branch:** `<feature branch>` (pushed: yes/no · last gates: ✅/❌)
+**Plan:** `.cursor/plans/<slug>.plan.md` — Phase <P> of <N>
 
 ---
 
@@ -13,7 +15,7 @@
 
 ## Active Workstream
 
-**Workstream X.Y: <Workstream Name>** <Status Emoji>
+**Workstream P.O: <Workstream Name>** <Status Emoji> · run_as: <subagent|parent> · role: <ROLE>
 
 ### Tasks
 - [ ] <Task 1>

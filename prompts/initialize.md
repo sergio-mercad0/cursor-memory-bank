@@ -50,22 +50,35 @@ Before creating any files, analyze the existing codebase:
 
 ## Phase 1: Create Directory Structure
 
-Create the following structure:
+First confirm you are on a feature branch (`git branch --show-current`); if on `main`, create
+`chore/memory-bank-init` before writing anything. Then create the following structure:
 
 ```
 .cursor/
-├── README.md                    # System documentation
+├── README.md                    # System documentation (from templates/cursor-readme.template.md)
+├── plans/                       # Planning documents — create empty
+├── rules/                       # Cursor rule files
+│   ├── environment.mdc          # from templates/cursor-rules/environment.template.mdc — prune to this machine's shell
+│   └── orchestrator-ready-plans.mdc   # from templates/cursor-rules/orchestrator-ready-plans.template.mdc
+├── skills/
+│   └── orchestrate-epic/        # copy templates/cursor-skills/orchestrate-epic/ ; replace <Project Name>
+├── prompts/                     # copy templates/cursor-prompts/*.md
 ├── memory/                      # Long-term context
 │   ├── PROJECT_BRIEF.md         # Mission, scope, future capabilities
-│   ├── TECH_STACK.md            # Technologies and versions
+│   ├── TECH_STACK.md            # Technologies, versions, capability tier
 │   ├── ARCHITECTURE.md          # System design and data flow
-│   ├── PRODUCT_ROADMAP.md       # Epics, workstreams, tasks
+│   ├── PRODUCT_ROADMAP.md       # Epics → phases → workstreams
 │   ├── LESSONS_LEARNED.md       # Patterns and gotchas
 │   └── DECISION_LOG.md          # Architecture Decision Records
 └── active_sprint/               # Short-term state
     ├── CURRENT_OBJECTIVE.md     # Current session goal
     └── TASK_LOG.md              # Progress tracking
+
+docs/MODEL_ROUTING.md            # from templates/docs/MODEL_ROUTING.md — review ladders against the live model list
 ```
+
+Only add `.cursor/rules/pr-artifact-verify.mdc` and `.github/workflows/ci.yml` (from `templates/ci/ci.example.yml`)
+if the project ships an installable artifact / has no CI yet. Fill every `<placeholder>` command.
 
 ---
 
@@ -145,8 +158,10 @@ Use this format:
 ## Epic X: [Title] [Priority] [Status]
 
 **Goal:** [One sentence description]
+**Branch:** feat/epic-X-<slug>   **Plan:** .cursor/plans/epic_X_<slug>.plan.md
 
-### Workstream X.1: [Title] [Status]
+### Phase 1 — [Name] [Status]
+#### Workstream 1.1: [Title] [Status]
 - [x] Completed task
 - [ ] Pending task
 - [~] In progress task
@@ -158,13 +173,18 @@ Use this format:
 
 ## Phase 4: Enforce Protocol
 
-After user approves the roadmap, update or create `.cursorrules` with the Memory Bank Protocol:
+After user approves the roadmap, update or create `.cursorrules` from `templates/.cursorrules`:
 
-1. **Startup Protocol:** Agent must read roadmap and await approval before coding
-2. **Hierarchical Todos:** Use `[Epic X > WS Y] Task` format
-3. **Decision Heuristic:** When to use DECISION_LOG vs LESSONS_LEARNED
-4. **Session Handoff:** Update TASK_LOG and CURRENT_OBJECTIVE at session end
-5. **Protected Files:** Which files need approval to modify
+1. **Startup Protocol:** check active plans, verify branch, read roadmap, await approval before coding
+2. **Branch Strategy:** one Epic = one branch off fresh `main`; `main` is PR-only
+3. **Planning:** plan files carry `phase` / `run_as` / `model_role` / `exit_gates`; todos use `[Epic X > WS P.O] (Phase P) Task`
+4. **Orchestrated execution:** one fresh subagent per workstream; the parent only routes gates; cycle chats at phase boundaries
+5. **Decision Heuristic:** when to use DECISION_LOG vs LESSONS_LEARNED (process decisions are ADRs too)
+6. **Session Handoff:** update TASK_LOG and CURRENT_OBJECTIVE, commit **and push**; Epic closeout opens a PR
+7. **Protected Files:** including `.cursorrules`, `.cursor/rules`, build config, schema sources
+8. **Sections 02 / 03:** fill the stack-specific stubs; **§4.5:** replace `<typecheck>` / `<test>` / `<lint>` / `<format:check>` with real commands
+
+Record the initialization itself as `ADR-001: Adopt cursor-memory-bank v3.0 protocol`.
 
 ---
 
@@ -196,14 +216,17 @@ After the Memory Bank is initialized:
 
 The Memory Bank is successfully initialized when:
 
-- [ ] All 8 files exist in `.cursor/` structure
-- [ ] TECH_STACK.md accurately reflects dependencies
+- [ ] All 8 memory / active_sprint files exist, plus `plans/`, `rules/environment.mdc`, `rules/orchestrator-ready-plans.mdc`, `skills/orchestrate-epic/`, `prompts/`
+- [ ] `docs/MODEL_ROUTING.md` exists and its ladders were reviewed against the live model list
+- [ ] TECH_STACK.md accurately reflects dependencies (and the capability tier, if any)
 - [ ] ARCHITECTURE.md has a system diagram
 - [ ] PROJECT_BRIEF.md defines scope and future capabilities
-- [ ] DECISION_LOG.md has at least 3 ADRs
-- [ ] PRODUCT_ROADMAP.md has at least one Epic
-- [ ] `.cursorrules` includes Memory Bank Protocol
+- [ ] DECISION_LOG.md has at least 3 ADRs (including the adoption ADR)
+- [ ] PRODUCT_ROADMAP.md has at least one Epic with phases
+- [ ] `.cursorrules` includes the Memory Bank Protocol with real gate commands in §4.5
+- [ ] `environment.mdc` was pruned to this machine's shell
 - [ ] User has approved the roadmap
+- [ ] Everything is committed on a feature branch and pushed
 
 ---
 
